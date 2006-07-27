@@ -17,12 +17,40 @@ default_php_ini = os.path.join(here, 'default-php.ini')
 
 class PHPApp(object):
 
-    def __init__(self, base_dir, fcgi_port=None,
+    def __init__(self, base_dir, 
                  php_script='php-cgi',
                  php_ini=default_php_ini,
                  php_options=None,
+                 fcgi_port=None,
                  search_fcgi_port_starting=10000,
                  logger='wphp'):
+        """
+        Create a WSGI wrapper around a PHP application.
+
+        `base_dir` is the root of the PHP application.  This
+        contains .php files, and potentially other static files. (@@:
+        Currently there is no way to indicate files that should not be
+        served, like ``.inc`` files or certain directories)
+
+        `php_script` is the path to the ``php-cgi`` script you want
+        to use.  By default it just looks on the ``$PATH`` for that
+        file.
+
+        `php_ini` is the path to the ``php.ini`` file you want to use.
+        An example (taken from the default PHP file) is in
+        ``wphp/default-php.ini``.  This allows you to customize the
+        language environment that the PHP files run in.
+
+        `php_options` is a dictionary of config-name: value, of
+        specific overrides for PHP options.  For instance,
+        ``{'magic_quotes_gpc': 'Off'}`` will turn off magic quotes.
+
+        PHP is started as a long-running FastCGI process.  PHP (from
+        what I can tell) only supports listening over IP sockets, so
+        we must get a port for it.  You may provide a specific port
+        (with `fcgi_port`) or give a starting port number (default
+        10000), and the first free port will be used.
+        """
         self.base_dir = base_dir
         self.fcgi_port = fcgi_port
         self.php_script = php_script
@@ -59,9 +87,16 @@ class PHPApp(object):
         if ext != '.php':
             app = fileapp.FileApp(script_filename)
             return app(environ, start_response)
+        if (environ['REQUEST_METHOD'] == 'POST'
+            and not environ.get('CONTENT_TYPE')):
+            environ['CONTENT_TYPE'] = 'application/x-www-form-urlencoded'
         return self.fcgi_app(environ, start_response)
 
     def find_script(self, base, path):
+        """
+        Given a path, finds the file the path points to, and the extra
+        portion of the path (PATH_INFO).
+        """
         path_info = ''
         while 1:
             full_path = os.path.join(base, path)
@@ -72,9 +107,12 @@ class PHPApp(object):
                 path = os.path.dirname(path)
             else:
                 return path, path_info
-            
 
     def create_child(self):
+        """
+        Creates the PHP subprocess, with some locking and whatnot, and
+        creates the WSGI application wrapper around that.
+        """
         self.lock.acquire()
         try:
             if self.child_pid:
@@ -91,6 +129,10 @@ class PHPApp(object):
             self.lock.release()
 
     def spawn_php(self, port):
+        """
+        Creates a PHP process that listens for FastCGI requests on the
+        given port.
+        """
         cmd = [self.php_script,
                '-b',
                '127.0.0.1:%s' % self.fcgi_port]
@@ -118,6 +160,9 @@ class PHPApp(object):
             os.environ)
 
     def find_port(self):
+        """
+        Finds a free port.
+        """
         host = '127.0.0.1'
         port = self.search_fcgi_port_starting
         while 1:
@@ -132,6 +177,10 @@ class PHPApp(object):
                 return port
 
     def close(self):
+        """
+        Kills the PHP subprocess.  Registered with atexit, so the
+        subprocess is killed when this process dies.
+        """
         # @@: Note, in a multiprocess setup this cannot
         # be handled this way
         if self.child_pid:
@@ -142,6 +191,9 @@ class PHPApp(object):
             os.kill(self.child_pid, signal.SIGKILL)
 
 def make_app(global_conf, **kw):
+    """
+    Create a PHP application (with Paste Deploy).
+    """
     if 'fcgi_port' in kw:
         kw['fcgi_port'] = int(kw['fcgi_port'])
     if 'search_fcgi_port_starting':

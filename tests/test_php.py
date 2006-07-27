@@ -22,4 +22,8 @@ app = TestApp(wsgi_app)
 def test_php():
     res = app.get('/test.php')
     assert '2 = 2' in res
-    
+    res = app.post('/test2.php?name=Guy', {'myname': 'Stan'})
+    print res
+    assert "I've been POSTed" in res
+    assert 'Hello, Guy' in res
+    assert 'My name is Stan' in res
