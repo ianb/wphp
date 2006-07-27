@@ -1,3 +1,8 @@
+"""
+Parses default-php.ini for variables, and gives metadata.
+
+Not really used in any interesting way currently.
+"""
 import os
 
 php_ini_location = os.path.join(os.path.dirname(__file__),

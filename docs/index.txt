@@ -1,0 +1,61 @@
+WPHP
+====
+
+*WSGI->PHP gateway; run PHP in Python*
+
+Introduction
+------------
+
+This module allows you to run PHP processes inside of Python, using a
+WSGI gateway.  This way PHP applications can appear like normal Python
+WSGI applications, and WSGI middleware routing and filters can all be
+applied in front of them.  For instance, WSGI middleware-based
+authentication or authorization, routing, deployment, or styling
+filters (like `WSGIOverlay <http://pythonpaste.org/wsgioverlay/>`_).
+
+Thanks to Allan Saddi for writing the ``fcgi_app.py`` module.  The
+rest is by Ian Bicking.
+
+Usage
+-----
+
+If you are using `Paste Deploy <http://pythonpaste.org/deploy/>`_ you
+can use it like this::
+
+    [app:php-app]
+    use = egg:wphp
+    base_dir = /path/to/php-files/
+    option magic_quote_gpc = Off
+
+Then when you access this application it'll run the PHP files in
+``/path/to/php-files/``.
+
+If you want to use it directly, do::
+
+    from wphp import PHPApp
+
+    my_php_app = PHPApp('/path/to/php-files',
+                        php_options={'magic_quote_gpc': 'Off'})
+
+You can also pass in specific overrides for ``php.ini``, or for
+options in that file (as shown here with ``magic_quote_gpc``).  
+
+PHP is run in a subprocess.
+
+To-Do
+-----
+
+* Not currently multiprocess-safe.  Basically it just needs to be
+  aware of multiple processes when starting up and stopping the PHP
+  FastCGI server process.
+
+* There should be a way to deny access to certain directories or
+  extensions, such as ``.inc`` files.  Currently all non-.php files
+  are served as normal static files.
+
+* I guess ``.php`` should also be configurable in some manner.
+
+* You have to have ``foo.php`` in your URL currently, there's no way
+  to redirect everything through one or several PHP files.  You
+  shouldn't *have* to use mod_rewrite or other fiddly things with wphp
+  -- it has the potential to do all that futzing internally.
