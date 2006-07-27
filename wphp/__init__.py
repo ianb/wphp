@@ -153,6 +153,8 @@ class PHPApp(object):
             # PHP doesn't start up *quite* right away, so we give it a
             # moment to be ready to accept connections
             time.sleep(0.1)
+            # @@: It would be better to actually loop and check for
+            # connection refused on the port.
             return
         os.execvpe(
             self.php_script,
