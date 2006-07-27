@@ -18,7 +18,8 @@ setup(name='wphp',
       include_package_data=True,
       zip_safe=False,
       install_requires=[
-          # -*- Extra requirements: -*-
+        'flup',
+        'Paste',
       ],
       entry_points="""
       [paste.app_factory]
