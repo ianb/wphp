@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '0.0'
+version = '0.1'
 
 setup(name='wphp',
       version=version,
@@ -22,6 +22,11 @@ You can use it like::
 
 And ``my_php_app`` will be a WSGI application you can embed in other
 Python applications.
+
+Available in a `Subversion repository
+<http://http://svn.pythonpaste.org/Paste/wphp/trunk#egg=wphp-dev>`_,
+or installation with ``easy_install wphp==dev``.  (No formal release
+has been made yet)
 """,
       classifiers=[
         'Development Status :: 3 - Alpha',
