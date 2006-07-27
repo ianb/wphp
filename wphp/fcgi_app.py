@@ -1,4 +1,32 @@
-# By Allan Saddi
+# Copyright (c) 2006 Allan Saddi <allan@saddi.com>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+# OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+#
+# $Id: fcgi_app.py 2026 2006-07-27 20:33:22Z asaddi $
+
+__author__ = 'Allan Saddi <allan@saddi.com>'
+__version__ = '$Revision: 2026 $'
+
 import select
 import struct
 import socket
@@ -57,7 +85,7 @@ if __debug__:
 
     # Set non-zero to write debug output to a file.
     DEBUG = 0
-    DEBUGLOG = '/tmp/fcgi.log'
+    DEBUGLOG = '/tmp/fcgi_app.log'
 
     def _debug(level, msg):
         if DEBUG < level:
@@ -227,71 +255,9 @@ class Record(object):
         if self.paddingLength:
             self._sendall(sock, '\x00'*self.paddingLength)
 
-def _fcgiGetValues(sock, vars):
-    # Construct FCGI_GET_VALUES record
-    outrec = Record(FCGI_GET_VALUES)
-    data = []
-    for name in vars:
-        data.append(encode_pair(name, ''))
-    data = ''.join(data)
-    outrec.contentData = data
-    outrec.contentLength = len(data)
-    outrec.write(sock)
-
-    inrec = Record()
-    inrec.read(sock)
-    result = {}
-    if inrec.type == FCGI_GET_VALUES_RESULT:
-        pos = 0
-        while pos < inrec.contentLength:
-            pos, (name, value) = decode_pair(inrec.contentData, pos)
-            result[name] = value
-    return result
-
-def _fcgiParams(sock, requestId, params):
-    rec = Record(FCGI_PARAMS, requestId)
-    data = []
-    for name,value in params.items():
-        data.append(encode_pair(name, value))
-    data = ''.join(data)
-    rec.contentData = data
-    rec.contentLength = len(data)
-    rec.write(sock)
-
-_environPrefixes = ['SERVER_', 'HTTP_', 'REQUEST_', 'REMOTE_', 'PATH_',
-                    'CONTENT_']
-_environCopies = ['SCRIPT_NAME', 'QUERY_STRING', 'AUTH_TYPE']
-_environRenames = {}
-
-def _filterEnviron(environ):
-    result = {}
-    for n in environ.keys():
-        for p in _environPrefixes:
-            if n.startswith(p):
-                result[n] = environ[n]
-        for c in _environCopies:
-            if n == c:
-                result[n] = environ[n]
-        for oldname,newname in _environRenames.items():
-            if n == oldname:
-                result[newname] = environ[n]
-    return result
-
-def _lightFilterEnviron(environ):
-    result = {}
-    for n in environ.keys():
-        if n.upper() == n:
-            result[n] = environ[n]
-    return result
-
 class FCGIApp(object):
-    def _getConnection(self):
-        if self.connect is not None:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(self.connect)
-            return sock
-
-    def __init__(self, command=None, connect=None, host=None, port=None, filterEnviron=True):
+    def __init__(self, command=None, connect=None, host=None, port=None,
+                 filterEnviron=True):
         if host is not None:
             assert port is not None
             connect=(host, port)
@@ -299,45 +265,58 @@ class FCGIApp(object):
         assert (command is not None and connect is None) or \
                (command is None and connect is not None)
 
-        self.command = command
-        self.connect = connect
+        self._command = command
+        self._connect = connect
 
-        self.filterEnviron = filterEnviron
-
+        self._filterEnviron = filterEnviron
+        
         #sock = self._getConnection()
-        #print _fcgiGetValues(sock, ['FCGI_MAX_CONNS', 'FCGI_MAX_REQS', 'FCGI_MPXS_CONNS'])
+        #print self._fcgiGetValues(sock, ['FCGI_MAX_CONNS', 'FCGI_MAX_REQS', 'FCGI_MPXS_CONNS'])
         #sock.close()
         
     def __call__(self, environ, start_response):
-        #print environ
-        
+        # For sanity's sake, we don't care about FCGI_MPXS_CONN
+        # (connection multiplexing). For every request, we obtain a new
+        # transport socket, perform the request, then discard the socket.
+        # This is, I believe, how mod_fastcgi does things...
+
         sock = self._getConnection()
 
-        rec = Record(FCGI_BEGIN_REQUEST, 1)
+        # Since this is going to be the only request on this connection,
+        # set the request ID to 1.
+        requestId = 1
+
+        # Begin the request
+        rec = Record(FCGI_BEGIN_REQUEST, requestId)
         rec.contentData = struct.pack(FCGI_BeginRequestBody, FCGI_RESPONDER, 0)
         rec.contentLength = FCGI_BeginRequestBody_LEN
         rec.write(sock)
 
-        if self.filterEnviron:
-            params = _filterEnviron(environ)
+        # Filter WSGI environ and send it as FCGI_PARAMS
+        if self._filterEnviron:
+            params = self._defaultFilterEnviron(environ)
         else:
-            params = _lightFilterEnviron(environ)
-        #print params
-        _fcgiParams(sock, 1, params)
-        _fcgiParams(sock, 1, {})
+            params = self._lightFilterEnviron(environ)
+        # TODO: Anything not from environ that needs to be sent also?
+        self._fcgiParams(sock, requestId, params)
+        self._fcgiParams(sock, requestId, {})
 
+        # Transfer wsgi.input to FCGI_STDIN
         while True:
             s = environ['wsgi.input'].read(4096)
-            rec = Record(FCGI_STDIN, 1)
+            rec = Record(FCGI_STDIN, requestId)
             rec.contentData = s
             rec.contentLength = len(s)
             rec.write(sock)
 
             if not s: break
-            
-        rec = Record(FCGI_DATA, 1)
+
+        # Empty FCGI_DATA stream
+        rec = Record(FCGI_DATA, requestId)
         rec.write(sock)
 
+        # Main loop. Process FCGI_STDOUT, FCGI_STDERR, FCGI_END_REQUEST
+        # records from the application.
         result = []
         while True:
             inrec = Record()
@@ -345,16 +324,25 @@ class FCGIApp(object):
             if inrec.type == FCGI_STDOUT:
                 if inrec.contentData:
                     result.append(inrec.contentData)
+                else:
+                    # TODO: Should probably be pedantic and no longer
+                    # accept FCGI_STDOUT records?
+                    pass
             elif inrec.type == FCGI_STDERR:
+                # Simply forward to wsgi.errors
                 environ['wsgi.errors'].write(inrec.contentData)
             elif inrec.type == FCGI_END_REQUEST:
+                # TODO: Process appStatus/protocolStatus fields?
                 break
-            
+
+        # Done with this transport socket, close it. (FCGI_KEEP_CONN was not
+        # set in the FCGI_BEGIN_REQUEST record we sent above. So the
+        # application is expected to do the same.)
         sock.close()
 
         result = ''.join(result)
 
-        # Parse response headers
+        # Parse response headers from FCGI_STDOUT
         status = '200 OK'
         headers = []
         pos = 0
@@ -364,29 +352,104 @@ class FCGIApp(object):
             line = result[pos:eolpos-1]
             pos = eolpos + 1
 
+            # strip in case of CR. NB: This will also strip other
+            # whitespace...
             line = line.strip()
+            
+            # Empty line signifies end of headers
             if not line: break
 
+            # TODO: Better error handling
             header, value = line.split(':')
             header = header.strip().lower()
             value = value.strip()
 
             if header == 'status':
+                # Special handling of Status header
                 status = value
                 if status.find(' ') < 0:
+                    # Append a dummy reason phrase if one was not provided
                     status += ' FCGIApp'
             else:
                 headers.append((header, value))
 
         result = result[pos:]
-        
-        #print headers
-        #print len(result)
-        
+
+        # Set WSGI status, headers, and return result.
         start_response(status, headers)
         return [result]
+
+    def _getConnection(self):
+        if self._connect is not None:
+            # The simple case. Create a socket and connect to the
+            # application.
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect(self._connect)
+            return sock
+
+        # To be done when I have more time...
+        raise NotImplementedError, 'Launching and managing FastCGI programs not yet implemented'
+    
+    def _fcgiGetValues(self, sock, vars):
+        # Construct FCGI_GET_VALUES record
+        outrec = Record(FCGI_GET_VALUES)
+        data = []
+        for name in vars:
+            data.append(encode_pair(name, ''))
+        data = ''.join(data)
+        outrec.contentData = data
+        outrec.contentLength = len(data)
+        outrec.write(sock)
+
+        # Await response
+        inrec = Record()
+        inrec.read(sock)
+        result = {}
+        if inrec.type == FCGI_GET_VALUES_RESULT:
+            pos = 0
+            while pos < inrec.contentLength:
+                pos, (name, value) = decode_pair(inrec.contentData, pos)
+                result[name] = value
+        return result
+
+    def _fcgiParams(self, sock, requestId, params):
+        rec = Record(FCGI_PARAMS, requestId)
+        data = []
+        for name,value in params.items():
+            data.append(encode_pair(name, value))
+        data = ''.join(data)
+        rec.contentData = data
+        rec.contentLength = len(data)
+        rec.write(sock)
+
+    _environPrefixes = ['SERVER_', 'HTTP_', 'REQUEST_', 'REMOTE_', 'PATH_',
+                        'CONTENT_']
+    _environCopies = ['SCRIPT_NAME', 'QUERY_STRING', 'AUTH_TYPE']
+    _environRenames = {}
+
+    def _defaultFilterEnviron(self, environ):
+        result = {}
+        for n in environ.keys():
+            for p in self._environPrefixes:
+                if n.startswith(p):
+                    result[n] = environ[n]
+            if n in self._environCopies:
+                result[n] = environ[n]
+            if n in self._environRenames:
+                result[self._environRenames[n]] = environ[n]
+                
+        return result
+
+    def _lightFilterEnviron(self, environ):
+        result = {}
+        for n in environ.keys():
+            if n.upper() == n:
+                result[n] = environ[n]
+        return result
 
 if __name__ == '__main__':
     from flup.server.ajp import WSGIServer
     app = FCGIApp(connect=('localhost', 4242))
+    #import paste.lint
+    #app = paste.lint.middleware(app)
     WSGIServer(app).run()
