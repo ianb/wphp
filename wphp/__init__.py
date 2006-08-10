@@ -152,10 +152,18 @@ class PHPApp(object):
             atexit.register(self.close)
             # PHP doesn't start up *quite* right away, so we give it a
             # moment to be ready to accept connections
-            time.sleep(0.1)
+            #time.sleep(0.1)
             # @@: It would be better to actually loop and check for
             # connection refused on the port.
-            return
+            while 1:
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.connect(('127.0.0.1', self.fcgi_port))
+                except socket.error, e:
+                    pass
+                else:
+                    sock.close()
+                    return
         os.execvpe(
             self.php_script,
             cmd,
