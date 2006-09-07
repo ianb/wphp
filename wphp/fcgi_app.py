@@ -360,7 +360,7 @@ class FCGIApp(object):
             if not line: break
 
             # TODO: Better error handling
-            header, value = line.split(':')
+            header, value = line.split(':', 1)
             header = header.strip().lower()
             value = value.strip()
 
