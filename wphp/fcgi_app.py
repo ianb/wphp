@@ -302,8 +302,11 @@ class FCGIApp(object):
         self._fcgiParams(sock, requestId, {})
 
         # Transfer wsgi.input to FCGI_STDIN
+        content_length = int(environ.get('CONTENT_LENGTH') or 0)
         while True:
-            s = environ['wsgi.input'].read(4096)
+            chunk_size = min(content_length, 4096)
+            s = environ['wsgi.input'].read(chunk_size)
+            content_length -= len(s)
             rec = Record(FCGI_STDIN, requestId)
             rec.contentData = s
             rec.contentLength = len(s)
