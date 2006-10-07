@@ -10,6 +10,8 @@ import signal
 import time
 import posixpath
 from paste import fileapp
+from paste.request import construct_url
+from paste.httpexceptions import HTTPMovedPermanently, HTTPNotFound
 from wphp import fcgi_app
 
 here = os.path.dirname(__file__)
@@ -19,11 +21,12 @@ class PHPApp(object):
 
     def __init__(self, base_dir, 
                  php_script='php-cgi',
-                 php_ini=default_php_ini,
+                 php_ini=None,
                  php_options=None,
                  fcgi_port=None,
                  search_fcgi_port_starting=10000,
-                 logger='wphp'):
+                 logger='wphp',
+                 log_level=None):
         """
         Create a WSGI wrapper around a PHP application.
 
@@ -59,24 +62,53 @@ class PHPApp(object):
             php_options = {}
         self.php_options = php_options
         self.search_fcgi_port_starting = search_fcgi_port_starting
+        if log_level:
+            log_level = logging._levelNames[log_level]
+        if logger == 'stdout':
+            # Special case...
+            logger = logging.getLogger('wphp')
+            console = logging.StreamHandler()
+            #console.setLevel(log_level)
+            console.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+            logger.addHandler(console)
         if isinstance(logger, basestring):
             logger = logging.getLogger(logger)
+        if log_level:
+            logger.setLevel(log_level)
+        
         self.logger = logger
         
         self.lock = threading.Lock()
         self.child_pid = None
         self.fcgi_app = None
 
+    # These are the filenames of "index" files:
+    index_names = ['index.html', 'index.htm', 'index.php']
+
     def __call__(self, environ, start_response):
+        if 'REQUEST_URI' not in environ:
+            # PHP likes to have this variable
+            environ['REQUEST_URI'] = (
+                environ.get('SCRIPT_NAME', '')
+                + environ.get('PATH_INFO', ''))
+            if environ.get('QUERY_STRING'):
+                environ['REQUEST_URI'] += '?'+environ['QUERY_STRING']
         if self.child_pid is None:
             if environ['wsgi.multiprocess']:
                 environ['wsgi.errors'].write(
                     "wphp doesn't support multiprocess apps very well yet")
             self.create_child()
         path_info = environ.get('PATH_INFO', '').lstrip('/')
+        full_path = os.path.join(self.base_dir, path_info)
+        if (os.path.isdir(full_path)
+            and not environ.get('PATH_INFO', '').endswith('/')):
+            # We need to do a redirect
+            new_url = construct_url(environ) + '/'
+            redir = HTTPMovedPermanently(headers=[('location', new_url)])
+            return redir.wsgi_application(environ, start_response)
         script_filename, path_info = self.find_script(self.base_dir, path_info)
         if script_filename is None:
-            exc = httpexceptions.HTTPNotFound()
+            exc = HTTPNotFound()
             return exc(environ, start_response)
         script_name = posixpath.join(environ.get('SCRIPT_NAME', ''), script_filename)
         script_filename = posixpath.join(self.base_dir, script_filename)
@@ -85,19 +117,41 @@ class PHPApp(object):
         environ['PATH_INFO'] = path_info
         ext = posixpath.splitext(script_filename)[1]
         if ext != '.php':
+            if self.logger:
+                self.logger.debug(
+                    'Found static file at %s',
+                    script_filename)
             app = fileapp.FileApp(script_filename)
             return app(environ, start_response)
+        if self.logger:
+            self.logger.debug(
+                'Found script at %s', script_filename)
         if (environ['REQUEST_METHOD'] == 'POST'
             and not environ.get('CONTENT_TYPE')):
             environ['CONTENT_TYPE'] = 'application/x-www-form-urlencoded'
-        return self.fcgi_app(environ, start_response)
+        app_iter = self.fcgi_app(environ, start_response)
+        return app_iter
 
     def find_script(self, base, path):
         """
         Given a path, finds the file the path points to, and the extra
         portion of the path (PATH_INFO).
         """
+        
+        full_path = os.path.join(base, path)
+        if os.path.exists(full_path) and os.path.isdir(full_path):
+            for index_name in self.index_names:
+                found = os.path.join(full_path, index_name)
+                if os.path.exists(found):
+                    return found, ''
+            if self.logger:
+                self.logger.info(
+                    'No index file in directory %s',
+                    full_path)
+            return None, None
+            
         path_info = ''
+        orig_path = path
         while 1:
             full_path = os.path.join(base, path)
             if not os.path.exists(full_path):
@@ -105,6 +159,11 @@ class PHPApp(object):
                     return None, None
                 path_info = '/' + os.path.basename(path) + path_info
                 path = os.path.dirname(path)
+            elif os.path.isdir(full_path):
+                if self.logger:
+                    self.logger.info(
+                        'Traversed up to directory (404) for %r', '/'+orig_path)
+                return None, None
             else:
                 return path, path_info
 
