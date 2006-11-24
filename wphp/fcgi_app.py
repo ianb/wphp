@@ -22,10 +22,10 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $Id: fcgi_app.py 2026 2006-07-27 20:33:22Z asaddi $
+# $Id: fcgi_app.py 2107 2006-11-24 22:10:23Z asaddi $
 
 __author__ = 'Allan Saddi <allan@saddi.com>'
-__version__ = '$Revision: 2026 $'
+__version__ = '$Revision: 2107 $'
 
 import select
 import struct
@@ -386,7 +386,10 @@ class FCGIApp(object):
         if self._connect is not None:
             # The simple case. Create a socket and connect to the
             # application.
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            if type(self._connect) is str:
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            else:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect(self._connect)
             return sock
 
