@@ -1,0 +1,8 @@
+News
+----
+
+0.1
+---
+
+* Use ``subprocess`` instead of ``os.fork``, to make it easier to run
+  on Windows.
