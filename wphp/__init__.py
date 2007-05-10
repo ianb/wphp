@@ -202,7 +202,9 @@ class PHPApp(object):
         for name, value in self.php_options.items():
             cmd.extend([
                 '-d', '%s=%s' % (name, value)])
-        proc = subprocess.Popen(cmd)
+        env = os.environ.copy()
+        env['PHP_FCGI_CHILDREN'] = '1'
+        proc = subprocess.Popen(cmd, env=env)
         self.child_pid = proc.pid
         if self.logger:
             self.logger.info(
