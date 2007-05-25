@@ -260,13 +260,13 @@ def make_app(global_conf, **kw):
     """
     if 'fcgi_port' in kw:
         kw['fcgi_port'] = int(kw['fcgi_port'])
-    if 'search_fcgi_port_starting':
+    if 'search_fcgi_port_starting' in kw:
         kw['search_fcgi_port_starting'] = int(kw['search_fcgi_port_starting'])
     kw.setdefault('php_options', {})
     for name, value in kw.items():
         if name.startswith('option '):
-            name = name[len('option '):].strip()
-            kw['php_options'][name] = value
+            optname = name[len('option '):].strip()
+            kw['php_options'][optname] = value
             del kw[name]
     if 'base_dir' not in kw:
         raise ValueError(
