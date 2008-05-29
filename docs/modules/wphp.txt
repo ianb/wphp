@@ -1,0 +1,20 @@
+:mod:`wphp` -- Run PHP as a WSGI application
+============================================
+
+.. automodule:: wphp
+
+Module Contents
+---------------
+
+.. autoclass:: PHPApp
+.. autofunction:: make_app
+
+FastCGI App
+-----------
+
+.. automodule:: wphp.fcgi_app
+
+.. autoclass:: FCGIApp
+
+
+

@@ -1,6 +1,12 @@
 WPHP
 ====
 
+.. toctree::
+
+   modules/wphp
+   news
+   license
+
 *WSGI->PHP gateway; run PHP in Python*
 
 Introduction
