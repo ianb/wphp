@@ -24,7 +24,7 @@ And ``my_php_app`` will be a WSGI application you can embed in other
 Python applications.
 
 Available in a `Subversion repository
-<http://http://svn.pythonpaste.org/Paste/wphp/trunk#egg=wphp-dev>`_,
+<http://svn.pythonpaste.org/Paste/wphp/trunk#egg=wphp-dev>`_,
 or installation with ``easy_install wphp==dev``.  (No formal release
 has been made yet)
 """,
