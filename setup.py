@@ -23,8 +23,8 @@ You can use it like::
 And ``my_php_app`` will be a WSGI application you can embed in other
 Python applications.
 
-Available in a `Subversion repository
-<http://http://svn.pythonpaste.org/Paste/wphp/trunk#egg=wphp-dev>`_,
+Available from `Mercurial repository
+<http://bitbucket.org/ianb/wphp>`_,
 or installation with ``easy_install wphp==dev``.  (No formal release
 has been made yet)
 """,
