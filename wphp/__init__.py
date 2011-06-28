@@ -252,7 +252,7 @@ class PHPApp(object):
                 self.logger.info(
                     "Killing PHP subprocess %s"
                     % self.child_pid)
-            os.kill(self.child_pid, signal.SIGKILL)
+            os.kill(self.child_pid, signal.SIGTERM)
 
 def make_app(global_conf, **kw):
     """
